@@ -1,0 +1,2 @@
+class AlreadyOnQuest(Exception):
+    pass
