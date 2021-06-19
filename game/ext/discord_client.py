@@ -7,9 +7,10 @@ from queue import Queue
 from typing import Optional, Dict
 
 from game import events
+from game.database import Hero
 from game.client import GameClient
 from game.util import wrap, ElementalDamageType
-from game.objects import Location, Hero
+from game.objects import Location
 
 # noinspection PyPackageRequirements
 import discord
@@ -91,9 +92,9 @@ class DiscordClient(GameClient, discord.Client):
                 # add hero players
                 for member in self.hero_role.members:
                     # TODO: listen for players joining Hero role and add them in
-                    new_hero = Hero(str(member), context=member)
+                    logger.info(f'Getting Hero {member.name} for Discord member: {member} ({member.id})')
+                    new_hero = self.engine.get_hero(member.name, discord_client_id=str(member.id))
                     self.member_to_hero[member] = new_hero
-                    self.engine.add_hero(new_hero)
 
     async def on_message(self, message: discord.Message):
         """ Called when a message is sent in discord.
@@ -101,6 +102,12 @@ class DiscordClient(GameClient, discord.Client):
         # ignore messages from the bot itself
         if self.user == message.author:
             return
+
+        # add the hero to the engine if they are not already
+        if message.channel in (self.wilderness, self.town):
+            if message.author in self.hero_role.members and message.author not in self.member_to_hero.keys():
+                new_hero = self.engine.get_hero(message.author.name, discord_client_id=str(message.author.id))
+                self.member_to_hero[message.author] = new_hero
 
         # make game event from message
         event = None
@@ -141,7 +148,7 @@ class DiscordClient(GameClient, discord.Client):
         if event:
             await self.absorb(event)
         else:
-            logger.debug(f'No event captured for message "{message}"')
+            logger.debug(f'No event captured for message "{message.clean_content}"')
 
     async def emit(self, event: events.GameEvent):
         """ Called when a game event happens.
@@ -169,7 +176,7 @@ class DiscordClient(GameClient, discord.Client):
             elif isinstance(event, events.FightResultEvent):
                 fight_result_message = ''
                 if event.hero_result.hit:
-                    fight_result_message += wrap(f'{event.hero.context} {event.verb} {event.enemy_result.context.name}!',
+                    fight_result_message += wrap(f'{event.hero} {event.verb} {event.enemy_result.context.name}!',
                                                  w=Emoji.ATTACK_HIT.value)
                 else:
                     await event.context.add_reaction('💨')
@@ -228,14 +235,8 @@ class DiscordClient(GameClient, discord.Client):
                                            f'for helping to fight {event.context[1].name}')
             elif event.type is events.GameEventType.SCORE:
                 awards = iter([Emoji.PLACE_1, Emoji.PLACE_2, Emoji.PLACE_3])
-                for hero, herodata in event.context:
+                for hero, score in event.context:
                     a = next(awards, None)
-                    await self.town.send(f'{a.value if a else ""} {hero}: {herodata["xp"]}')
+                    await self.town.send(f'{a.value if a else ""} {hero}: {score}')
 
-            # Print to the log too
-            # TODO: some events like searches and fights have no engine-created message, so they will be None
-            #    figure out a way to print these in a generic way via the Engine.
-            if event.location:
-                logger.info(f'{event.location.name}> {event.message}')
-            else:
-                logger.info(f'{event.message}')
+            await super().emit(event)

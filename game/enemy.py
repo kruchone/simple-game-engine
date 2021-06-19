@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Optional, List, Tuple
 
-from game.objects import Hero
+from game.database import Hero
 from game.util import MarkdownStyle, wrap, ElementalDamageType, elemental_weakness_for
 
 
@@ -20,6 +20,9 @@ class Enemy(object):
 
     def __str__(self):
         return f'{wrap(self.name, w=self.fancy.value)} [hp: {self.hp}]'
+
+    def __repr__(self):
+        return self.__str__()
 
     def clone(self):
         return self.__class__(

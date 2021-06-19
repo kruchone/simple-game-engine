@@ -25,11 +25,7 @@ class GameClient(object):
         Args:
             event: the event to print
         """
-        if event.message:
-            if event.location:
-                logger.info(f'{event.location.name}> {event.message}')
-            else:
-                logger.info(f'{event.message}')
+        logger.info(f'{event}')
 
     async def absorb(self, event: events.GameEvent):
         """ Ingest an event into the engine."""
