@@ -1,29 +1,24 @@
 from enum import Enum
 from typing import Any, List
 
-from game.objects import Location, GameObject, Hero
+from game.database import Hero
+from game.objects import Location, GameObject
 
 
 class GameEventType(Enum):
     SEARCH = 1
     FIGHT = 2
     COMMAND = 3
-
     NOOP = 4
-
     QUEST_START = 5
     QUEST_GET_CURRENT = 6
     QUEST_ABANDON = 7
     QUEST_COMPLETE = 8
     QUEST_XP = 9
-
     ENEMY_APPEAR = 10
     ENEMY_XP = 11
-
     BOSS_APPEAR = 12
-
     MULTI = 13
-
     SCORE = 14
 
 
@@ -49,7 +44,16 @@ class GameEvent(object):
         self.context = context
 
     def __str__(self):
-        return f'event.{self.type.name}: {self.message if self.message else "(no message)"}'
+        s = ''
+        if self.location:
+            s += f'{self.location.name}: '
+        s += f'e.{self.type.name}'
+        if self.message:
+            return f'{s}: {self.message}'
+        elif self.context:
+            return f'{s}: {self.context}'
+        else:
+            return f'{s}'
 
     def add_augment(self, obj: GameObject) -> None:
         """augment an event with a game object
@@ -66,6 +70,9 @@ class GameMultiEvent(GameEvent):
     def __init__(self, events: List[GameEvent]):
         super().__init__(GameEventType.MULTI)
         self.events = events
+
+    def __str__(self):
+        return ', '.join([str(e) for e in self.events])
 
 
 class HeroEvent(GameEvent):
@@ -86,8 +93,16 @@ class SearchResultEvent(HeroEvent):
         found_enemy: whether the hero found an enemy
     """
     def __init__(self, found_enemy: bool = False, **kwargs):
-        self.found_enemy = found_enemy
         super().__init__(GameEventType.SEARCH, **kwargs)
+        self.found_enemy = found_enemy
+
+    @property
+    def message(self):
+        return f'{self.hero} searches, and finds {"an enemy" if self.found_enemy else "nothing"}'
+
+    @message.setter
+    def message(self, v):
+        pass  # no thanks, we will use our message
 
 
 # TODO: maybe move this into contexts.py
@@ -141,3 +156,7 @@ class FightResultEvent(HeroEvent):
                                                weak=enemy_weak, strong=enemy_strong,
                                                context=kwargs.pop('enemy_context', None))
         super().__init__(GameEventType.FIGHT, **kwargs)
+
+    def __str__(self):
+        self.message = f'enemy={self.enemy_result.context.name}, hero={self.hero.name}'
+        return super().__str__()

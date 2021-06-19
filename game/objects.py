@@ -22,21 +22,3 @@ class ElementalDamageType(GameObject, Enum):
 class Location(GameObject, Enum):
     TOWN = 'town'
     WILDERNESS = 'wilderness'
-
-
-class Hero(GameObject):
-    def __init__(self, name: str, **kwargs):
-        self.name = name
-        self.hp = kwargs.get('hp', 20)
-        self.xp = kwargs.get('xp', 0)
-        super().__init__(**kwargs)
-
-    def as_dict(self):
-        return {
-            'name': self.name,
-            'xp': self.xp,
-            'hp': self.hp
-        }
-
-    def __str__(self):
-        return self.name

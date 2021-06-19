@@ -1,40 +1,46 @@
+import logging
 import random
-from collections import defaultdict
 from typing import Optional, Union, List, Any
 
+from game.database import db, Hero
 from game.enemy import Enemy
 from game.events import FightResultEvent, SearchResultEvent, GameEvent, GameEventType, HeroEvent, GameMultiEvent
 from game.exceptions import AlreadyOnQuest
-from game.objects import Hero
 from game.quests import Quest
 from game.util import ElementalDamageType
+
+
+logger = logging.getLogger(__name__)
 
 
 class Engine(object):
     XP_FOR_SEARCHING = 1
 
     def __init__(self, quests=None):
-        self._data = defaultdict(dict)
+        self.db = db
+        self.heroes = []
         self.quests = quests
         self.current_quest: Optional[Quest] = None
         self.current_enemy: Optional[Enemy] = None
         self.game_engine = None
 
-    @property
-    def herodata(self):
-        return self._data['heroes']
-
-    @property
-    def heroes(self):
-        return list(self.herodata.keys())
-
-    def add_hero(self, hero: Hero):
+    def get_hero(self, name: str, discord_client_id: str = None):
         """ Add a hero to the engine.
 
         Args:
-            hero: the hero to add to the game.
+            name: the name of the hero to add to the game. must be unique.
+            discord_client_id: the id on Discord for the user.
         """
-        self.herodata[hero] = hero.as_dict()
+        h, created = Hero.get_or_create(name=name,
+                                        discord_client_id=discord_client_id,
+                                        defaults={'hp': 20})
+        if created:
+            logger.info(f'New hero: {h}, ID: {h.id}')
+        else:
+            h.hp = 20
+            h.save()
+            logger.debug(f'Existing hero: {h}, ID: {h.id}')
+        return h
 
     def start_quest(self, quest: Quest = None) -> GameEvent:
         """ Start a quest.
@@ -83,7 +89,7 @@ class Engine(object):
                 # you get hit
                 got_hit = True
                 hero.hp -= 1
-                self.herodata[hero] = hero.as_dict()
+                hero.save()
 
         fight_event = FightResultEvent(hero.hp, self.current_enemy.hp, verb=verb,
                                        hit=hit, crit=crit, weak=weak,
@@ -140,6 +146,7 @@ class Engine(object):
 
         Args:
             hero: the hero searching
+            client_context: an optional context object from the client
         """
         search_result = SearchResultEvent(hero=hero, context=client_context)
         fight_result, appear_event, boss_event = None, None, None
@@ -150,14 +157,20 @@ class Engine(object):
                         # a monster appears!
                         search_result.found_enemy = True
                         self.current_enemy = self.current_enemy or self.current_quest.area.enemies.pop()
-                        appear_event = GameEvent(GameEventType.ENEMY_APPEAR, context=self.current_enemy)
-                        fight_result = self.fight(hero, opportunity=True, client_context=client_context)  # player gets an attack of opportunity
+                        appear_event = GameEvent(GameEventType.ENEMY_APPEAR,
+                                                 context=self.current_enemy,
+                                                 message=f'{self.current_enemy} appears')
+                        fight_result = self.fight(hero,
+                                                  opportunity=True,
+                                                  client_context=client_context)  # player gets an attack of opportunity
+                        fight_result.message = f'{hero} gets an attack of opportunity on {self.current_enemy}'
                     elif not self.current_quest.area.boss.dead:
                         # the boss appears!
                         search_result.found_enemy = True
                         self.current_enemy = self.current_quest.area.boss
                         boss_event = GameEvent(GameEventType.BOSS_APPEAR, context=self.current_enemy)
                         fight_result = self.fight(hero, opportunity=True, client_context=client_context)
+                        fight_result.message = f'{hero} gets an attack of opportunity on {self.current_enemy}'
                     else:
                         # no enemies and the boss is dead...
                         # fall through and just search
@@ -165,7 +178,7 @@ class Engine(object):
 
         # just get search xp
         hero.xp += self.XP_FOR_SEARCHING
-        self._data[hero] = hero.as_dict()
+        hero.save()
 
         # tie up the events that happened
         events = [search_result]
@@ -208,7 +221,7 @@ class Engine(object):
         events = []
         for hero, xp_gained in enemy.award_xp():
             hero.xp += xp_gained
-            self.herodata[hero] = hero.as_dict()
+            hero.save()
             events.append(HeroEvent(GameEventType.ENEMY_XP,
                                     hero=hero,
                                     context=(xp_gained, enemy)))
@@ -224,11 +237,11 @@ class Engine(object):
         """
         amt = quest.xp_upon_completion
         hero.xp += amt
-        self.herodata[hero] = hero.as_dict()
+        hero.save()
         return HeroEvent(GameEventType.QUEST_XP, hero=hero, context=(amt, quest))
 
     def score(self) -> GameEvent:
-        scores = sorted(self.herodata.items(), key=lambda x: x[1]['xp'], reverse=True)[0:3]
+        scores = [(str(h), h.xp) for h in Hero.select().where(Hero.xp > 0).order_by(Hero.xp.desc())]
         return GameEvent(GameEventType.SCORE, context=scores)
 
     def process_event(self, event: GameEvent) -> GameEvent:
