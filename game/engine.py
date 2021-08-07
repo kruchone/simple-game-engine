@@ -1,5 +1,6 @@
 import logging
 import random
+from copy import copy
 from typing import Optional, Union, List, Any
 
 from game.database import db, Hero
@@ -37,8 +38,6 @@ class Engine(object):
         if created:
             logger.info(f'New hero: {h}, ID: {h.id}')
         else:
-            h.hp = 20
-            h.save()
             logger.debug(f'Existing hero: {h}, ID: {h.id}')
         return h
 
@@ -50,7 +49,11 @@ class Engine(object):
         """
         if self.current_quest:
             raise AlreadyOnQuest(f'You are already on quest {self.current_quest}')
-        self.current_quest = quest or random.choice(self.quests)
+        try:
+            self.current_quest = quest or self.quests.pop(0)
+        except IndexError:
+            # no more quests
+            return GameEvent(GameEventType.NOOP)
         self.current_quest.area.populate()
         return GameEvent(GameEventType.QUEST_START, context=self.current_quest)
 
@@ -253,7 +256,6 @@ class Engine(object):
                 return self.fight(event.hero, damage_type=event.augment, client_context=event.context)
         elif event.type == GameEventType.COMMAND:
             if event.message == 'quest start':
-                # picks a random quest to start if none supplied.
                 try:
                     return self.start_quest()
                 except AlreadyOnQuest:
@@ -261,8 +263,9 @@ class Engine(object):
             elif event.message == 'quest':
                 return GameEvent(GameEventType.QUEST_GET_CURRENT, context=self.current_quest)
             elif event.message == 'quest abandon':
+                quest_abandoned = copy(self.current_quest)
                 self.current_quest = None
-                return GameEvent(GameEventType.QUEST_ABANDON)
+                return GameEvent(GameEventType.QUEST_ABANDON, context=quest_abandoned)
             elif event.message == 'score':
                 return self.score()
             else:

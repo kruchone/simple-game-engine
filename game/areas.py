@@ -5,13 +5,21 @@ from game.enemy import Enemy
 
 
 class Area(object):
-    def __init__(self, name, num_enemies: int, enemies: dict = None, boss: Enemy = None):
+    def __init__(self,
+                 name: str,
+                 num_enemies: int,
+                 enemies: dict = None,
+                 boss: Enemy = None,
+                 prologue: str = None,
+                 epilogue: str = None):
         self.name = name
         self._probabilities = enemies or {}
         self.enemies = []
         self.num_enemies = num_enemies
         self.boss = boss.clone()
         self.populate()
+        self.prologue = prologue or 'The heroes enter ' + self.name
+        self.epilogue = epilogue or 'The heroes leave ' + self.name
 
     def __str__(self):
         s = self.name
@@ -33,7 +41,6 @@ class Area(object):
         for spawn in range(self.num_enemies):
             self.spawn_random_enemy()
         self.boss.heal()
-        # self.enemy_count()
 
     def enemy_count(self):
         counts = defaultdict(int)

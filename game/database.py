@@ -26,13 +26,6 @@ class Hero(Model):
     class Meta:
         database = db
 
-    def as_dict(self):
-        return {
-            'name': self.name,
-            'xp': self.xp,
-            'hp': self.hp
-        }
-
     def __str__(self):
         return self.name
 

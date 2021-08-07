@@ -6,10 +6,12 @@ from enum import Enum
 from queue import Queue
 from typing import Optional, Dict
 
+from discord import Embed, Colour
+
 from game import events
 from game.database import Hero
 from game.client import GameClient
-from game.util import wrap, ElementalDamageType
+from game.util import wrap, ElementalDamageType, MarkdownStyle
 from game.objects import Location
 
 # noinspection PyPackageRequirements
@@ -91,7 +93,6 @@ class DiscordClient(GameClient, discord.Client):
             if self.engine and self.town and self.wilderness:
                 # add hero players
                 for member in self.hero_role.members:
-                    # TODO: listen for players joining Hero role and add them in
                     logger.info(f'Getting Hero {member.name} for Discord member: {member} ({member.id})')
                     new_hero = self.engine.get_hero(member.name, discord_client_id=str(member.id))
                     self.member_to_hero[member] = new_hero
@@ -123,7 +124,7 @@ class DiscordClient(GameClient, discord.Client):
                     context=message)
                 augment = next((e for e in emojis if e.discord.decode('utf-8') == message.clean_content), None)
                 if augment:
-                    # TODO: why does typehinting not work for child classes? am I doing something wrong?
+                    # TODO: why does type hinting not work for child classes? am I doing something wrong?
                     #   either way this works just fine.
                     event.add_augment(augment.enum)
             else:
@@ -136,11 +137,32 @@ class DiscordClient(GameClient, discord.Client):
                     context=message)
 
         elif message.channel == self.town:
+            potential_command = str(message.clean_content).lower()
+            if potential_command == 'help':
+                # help with commands
+                commands = '\n'.join([
+                    f'{wrap("quest start", w=MarkdownStyle.BOLD.value)} - starts a quest.',
+                    f'{wrap("quest", w=MarkdownStyle.BOLD.value)} - prints the current quest.',
+                    f'{wrap("quest abandon", w=MarkdownStyle.BOLD.value)} - abandons the current quest.',
+                    f'{wrap("score", w=MarkdownStyle.BOLD.value)} - prints the high scores.',
+                ])
+                e = Embed(title='Help', colour=Colour.dark_grey())
+                e.add_field(name='Town Commands', value=commands)
+
+                wcommands = '\n'.join([
+                    f'{wrap("<any message>", w=MarkdownStyle.ITALIC.value)}'
+                    ' - searches the current room, or fights an enemy if one exists..',
+                    f'<{"|".join([e.str for e in emojis])}> - fights with the used element'
+                ])
+                e.add_field(name='Wilderness Commands', value=wcommands)
+
+                await self.town.send(embed=e)
+
             # command
             event = events.HeroEvent(
                 events.GameEventType.COMMAND,
                 hero=self.member_to_hero[message.author],
-                message=str(message.clean_content),
+                message=potential_command,
                 location=Location.TOWN,
                 context=message)
 
@@ -158,7 +180,6 @@ class DiscordClient(GameClient, discord.Client):
         Args:
             event: the event that occurred
         """
-        # origin_event = event
         event_queue = Queue()
         event_queue.put(event)
         while not event_queue.empty():
@@ -168,18 +189,24 @@ class DiscordClient(GameClient, discord.Client):
             if isinstance(event, events.GameMultiEvent):
                 for e in event.events:
                     event_queue.put(e)
+
             # SearchResult
             elif isinstance(event, events.SearchResultEvent):
                 if not event.found_enemy:
                     await event.context.add_reaction('🔍')
+
             # FightResult
             elif isinstance(event, events.FightResultEvent):
                 fight_result_message = ''
+
+                # hero hit
                 if event.hero_result.hit:
                     fight_result_message += wrap(f'{event.hero} {event.verb} {event.enemy_result.context.name}!',
                                                  w=Emoji.ATTACK_HIT.value)
                 else:
                     await event.context.add_reaction('💨')
+
+                # hero crit
                 if event.hero_result.crit:
                     fight_result_message += f'... and it\'s a critical hit {Emoji.ATTACK_CRIT.value}!!!'
                     await event.context.add_reaction('🌟')
@@ -190,37 +217,52 @@ class DiscordClient(GameClient, discord.Client):
                 if event.hero_result.weak:
                     await self.wilderness.send(f'{event.enemy_result.context} writhes in pain!')
                 if event.hero_result.strong:
-                    await self.wilderness.send(f'{event.enemy_result.context} doesn\'t seem to be affected that much...')
-
-                # enemy death
-                if event.enemy_result.hp <= 0:
-                    death_animation = random.choice(['collapses', 'dies'])
-                    await self.wilderness.send(wrap(f'{event.enemy_result.context} {death_animation}.', w=Emoji.DEAD.value))
+                    await self.wilderness.send(f"{event.enemy_result.context} doesn't seem to be that affected...")
 
                 # hero damage
                 if event.enemy_result.hit:
                     await event.context.add_reaction('🩸')
-                    # player hp indicator
-                    indicator = {9: '9️⃣', 8: '8️⃣', 7: '7️⃣', 6: '6️⃣', 5: '5️⃣', 4: '4️⃣',
-                                 3: '3️⃣', 2: '2️⃣', 1: '1️⃣', 0: '☠'}
+                    # player hp indicator (if low enough)
+                    indicator = {9: '9️⃣', 8: '8️⃣', 7: '7️⃣', 6: '6️⃣', 5: '5️⃣',
+                                 4: '4️⃣', 3: '3️⃣', 2: '2️⃣', 1: '1️⃣', 0: '☠'}
                     if indicator.get(event.hero_result.hp):
                         await event.context.add_reaction(indicator.get(event.hero_result.hp))
+
+                # enemy death
+                if event.enemy_result.hp <= 0:
+                    death_animation = random.choice(['collapses', 'dies'])
+                    await self.wilderness.send(wrap(f'{event.enemy_result.context} {death_animation}.',
+                                                    w=Emoji.DEAD.value))
 
                 # hero death
                 if event.hero_result.hp <= 0:
                     await self.town.send(wrap(f'{event.hero_result.context} died.',
                                               w=Emoji.DEAD.value))
+
             # Other less-complex events
             elif event.type is events.GameEventType.QUEST_START:
-                await self.town.send(f'Starting quest "{event.context}".')
-                await self.wilderness.send(event.context.prologue)
+                e = Embed(title='Quest Started', colour=Colour.dark_green(),
+                          description=f'Starting quest "{event.context}".')
+                e.set_footer(text='You can abandon this quest by typing "quest abandon".')
+                await self.town.send(embed=e)
+                e = Embed(title=event.context, description=event.context.prologue)
+                e.set_footer(text='Head to the #wilderness to start searching for enemies!')
+                await self.town.send(embed=e)
+                await self.wilderness.send(embed=Embed(title=event.context.area.name,
+                                                       description=event.context.area.prologue))
             elif event.type is events.GameEventType.QUEST_GET_CURRENT:
                 await self.town.send(f'Currently on the quest "{event.context}".')
             elif event.type is events.GameEventType.QUEST_ABANDON:
                 await self.town.send('If you say so...')
+                await self.wilderness.send(embed=Embed(title=event.context.area.name,
+                                                       description=event.context.area.epilogue))
             elif event.type is events.GameEventType.QUEST_COMPLETE:
-                await self.wilderness.send(event.context.epilogue)
-                await self.town.send(f'Our Heroes have completed the quest "{event.context}".')
+                await self.wilderness.send(embed=Embed(title=event.context.area.name,
+                                                       description=event.context.area.epilogue))
+                await self.town.send(event.context.epilogue)
+                e = Embed(title='Quest Complete!', colour=Colour.dark_green(),
+                          description=f'Our Heroes have completed the quest "{event.context}".')
+                await self.town.send(embed=e)
             elif event.type is events.GameEventType.QUEST_XP:
                 await self.town.send(f'{event.hero} gets {event.context[0]} xp '
                                      f'for helping with the quest: "{event.context[1]}"')
@@ -235,8 +277,22 @@ class DiscordClient(GameClient, discord.Client):
                                            f'for helping to fight {event.context[1].name}')
             elif event.type is events.GameEventType.SCORE:
                 awards = iter([Emoji.PLACE_1, Emoji.PLACE_2, Emoji.PLACE_3])
+                first_place = None
+                e = Embed(title='High Scores', colour=Colour.gold())
                 for hero, score in event.context:
                     a = next(awards, None)
-                    await self.town.send(f'{a.value if a else ""} {hero}: {score}')
+                    first_place = first_place or hero
+                    e.add_field(name=f'{a.value if a else ""} {hero}', value=f'{score} xp.')
+
+                # maybe add a snarky saying to the scorecard
+                snarky = [
+                    'Aww cute, you almost made it!',
+                    'Better luck next time.',
+                    'Dreams are like rainbows. Only idiots chase them.',
+                    'Remember, trying is the first step to failure!',
+                ]
+                if random.choice([True, False, False, False]):
+                    e.set_footer(text=f'{first_place} says, "{random.choice(snarky)}"')
+                await self.town.send(embed=e)
 
             await super().emit(event)
