@@ -19,7 +19,7 @@ if __name__ == '__main__':
     engine = Engine(quests=diablo2.quests)
     bot = DiscordClient(engine=engine)
     try:
-        bot.run(os.environ.get('BOT_TOKEN'), bot=True)
+        bot.run(os.environ.get('BOT_TOKEN'), reconnect=True)
     except KeyboardInterrupt:
         db.close()
         print('Done!')

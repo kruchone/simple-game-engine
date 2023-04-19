@@ -9,7 +9,7 @@ from typing import Optional, Dict
 from discord import Embed, Colour
 
 from game import events
-from game.database import Hero
+from game.database import Hero, Game
 from game.client import GameClient
 from game.util import wrap, ElementalDamageType, MarkdownStyle
 from game.objects import Location
@@ -58,6 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class DiscordClient(GameClient, discord.Client):
+    BOT_NAME = 'Dungeon Master'
     SERVER_NAME = 'A Professional Farmer'
     CHANNEL_TOWN_NAME = 'town'
     CHANNEL_WILDERNESS_NAME = 'wilderness'
@@ -74,6 +75,7 @@ class DiscordClient(GameClient, discord.Client):
 
         bot_intents = discord.Intents.default()
         bot_intents.members = True
+        bot_intents.message_content = True
         # kwargs['intents'] = bot_intents
 
         # HACK: can't I just use super().__init__(**kwargs) ? I guess not
@@ -85,6 +87,7 @@ class DiscordClient(GameClient, discord.Client):
     async def on_ready(self):
         """ Called when the discord client is ready to begin, all connections are established.
         """
+        await self.user.edit(username=self.BOT_NAME)
         self.game_server = next((g for g in self.guilds if g.name == self.SERVER_NAME), None)
         if self.game_server:
             self.town = next((ch for ch in self.game_server.channels if ch.name == self.CHANNEL_TOWN_NAME), None)

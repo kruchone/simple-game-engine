@@ -3,7 +3,7 @@ import random
 from copy import copy
 from typing import Optional, Union, List, Any
 
-from game.database import db, Hero
+from game.database import db, Hero, Game
 from game.enemy import Enemy
 from game.events import FightResultEvent, SearchResultEvent, GameEvent, GameEventType, HeroEvent, GameMultiEvent
 from game.exceptions import AlreadyOnQuest
@@ -50,7 +50,9 @@ class Engine(object):
         if self.current_quest:
             raise AlreadyOnQuest(f'You are already on quest {self.current_quest}')
         try:
-            self.current_quest = quest or self.quests.pop(0)
+            game, created = Game.get_or_create()
+            if game.current_quest is not None:
+                self.current_quest = self.quests[game.current_quest]
         except IndexError:
             # no more quests
             return GameEvent(GameEventType.NOOP)
@@ -59,7 +61,7 @@ class Engine(object):
 
     def fight(self, hero: Hero, damage_type: ElementalDamageType = None,
               force_hit: bool = False, force_crit: bool = False,
-              opportunity: bool = True, client_context: Any = None) -> Union[FightResultEvent, GameMultiEvent]:
+              opportunity: bool = False, client_context: Any = None) -> Union[FightResultEvent, GameMultiEvent]:
         """A hero fights the current enemy"""
         fight_method_for = {
             None: self._fight_normal,
@@ -77,7 +79,7 @@ class Engine(object):
         except KeyError:
             verb, hit, crit = self._fight_normal()
 
-        crit = hit and crit  # dont allow non-hits to crit
+        crit = hit and crit  # don't allow non-hits to crit
 
         weak, strong = False, False
         if hit or force_hit:
@@ -210,6 +212,9 @@ class Engine(object):
             for p in self.current_quest.players_participated:
                 events.append(self.award_quest_xp(p, self.current_quest))
             self.current_quest = None
+            game, created = Game.get_or_create()
+            game.current_quest = game.current_quest + 1
+            game.save()
 
         return events
 

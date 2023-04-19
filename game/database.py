@@ -30,8 +30,19 @@ class Hero(Model):
         return self.name
 
 
+class Game(Model):
+    current_quest = IntegerField(null=False, default=0)
+
+    class Meta:
+        database = db
+
+    def __str__(self):
+        return self.name
+
+
 if __name__ == '__main__':
     print('Making table.')
     db.connect()
     db.create_tables([Hero], safe=True)
+    db.create_tables([Game], safe=True)
     print('Done.')

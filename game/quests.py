@@ -18,5 +18,5 @@ class Quest(object):
         return wrap(self.name, w=self.fancy.value)
 
     @property
-    def complete(self):
+    def complete(self) -> bool:
         return len(self.area.enemies) == 0 and self.area.boss.dead

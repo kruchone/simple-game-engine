@@ -161,7 +161,7 @@ QUEST_SEARCH_FOR_CAIN = Quest('Search for Cain',
                                             'had planned for one of the last of the Horadrim. You toss him a town '
                                             'town portal scroll which he casts. Jumping through the newly opened '
                                             'portal, the party escapes back to the Rogue Encampment.'),
-                              prologue=pl, epilogue=el, xp=550)
+                              prologue=pl, epilogue=el, xp=650)
 
 
 
@@ -205,11 +205,11 @@ SISTERS_TO_THE_SLAUGHTER = Quest('Sisters to the Slaughter',
                                 boss=Beastiary.BOSS_ANDARIEL,
                                 epilogue='The party makes the long trek back to the surface. It will be great to see '
                                          'the light once more...'),
-                           prologue=pl, epilogue=el, xp=550)
+                           prologue=pl, epilogue=el, xp=1200)
 
 quests = [
     # Act I
-    # QUEST_DEN_OF_EVIL,
+    QUEST_DEN_OF_EVIL,
     QUEST_SISTERS_BURIAL_GROUNDS,
     QUEST_SEARCH_FOR_CAIN,
     # TODO: Search for Cain.

@@ -38,7 +38,7 @@ class Area(object):
         self.enemies.append(enemy.clone())
 
     def populate(self):
-        for spawn in range(self.num_enemies):
+        for spawn in range(self.num_enemies - 1):
             self.spawn_random_enemy()
         self.boss.heal()
 
